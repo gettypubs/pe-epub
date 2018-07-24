@@ -9,6 +9,7 @@ var shell        = require('shelljs');
 var JSZip        = require('./src/libs/jszip.js');
 var archiver     = require('archiver');
 var utils        = require('./src/utils.js');
+var upath        = require('upath');
 
 var readFile = Q.denodeify(fs.readFile);
 
@@ -35,13 +36,21 @@ function setupTemplatesSync(){
 }
 
 
+  /**
+   * check Operating System
+   * @returns {boolean} 
+   */
+  function isWin() {
+    return process.platform === 'win32' ? true : false
+  }
+
+
 /**
  *
  */
 var Peepub;
 Peepub = function Peepub(first, debug) {
   'use strict';
-
   this.json = {};
   if (first) {
     this.json = _.cloneDeep(first);
@@ -131,13 +140,13 @@ Peepub.prototype._epubPath = function(add){
   if(!this.useFs){
     if(_.isUndefined(this.buffers[dir + Peepub.EPUB_META_DIR + 'container.xml'] && !add)){
 
-      this.buffers[dir + Peepub.EPUB_META_DIR + 'container.xml'] = new Buffer(handlebars.templates[templatesBase + "container.xml"]({}));
+      this.buffers[dir + Peepub.EPUB_META_DIR + 'container.xml'] = Buffer.from(handlebars.templates[templatesBase + "container.xml"]({}));
       this.epubFiles.push(dir + Peepub.EPUB_META_DIR + 'container.xml');
 
       var ff = this.getJson().fixedFormat;
       if( !_.isUndefined(ff) ){
         this.epubFiles.push(dir + Peepub.EPUB_META_DIR + 'com.apple.ibooks.display-options.xml');
-        this.buffers[dir + Peepub.EPUB_META_DIR + 'com.apple.ibooks.display-options.xml'] = new Buffer(handlebars.templates[templatesBase + "com.apple.ibooks.display-options.xml"]({}));
+        this.buffers[dir + Peepub.EPUB_META_DIR + 'com.apple.ibooks.display-options.xml'] = Buffer.from(handlebars.templates[templatesBase + "com.apple.ibooks.display-options.xml"]({}));
       }
     }
     return dir;
@@ -159,7 +168,7 @@ Peepub.prototype._epubPath = function(add){
       if( !_.isUndefined(ff) ){
         fs.writeFileSync(dir + Peepub.EPUB_META_DIR + 'com.apple.ibooks.display-options.xml', handlebars.templates[templatesBase + "com.apple.ibooks.display-options.xml"]({}), "utf8");
         this.epubFiles.push(dir + Peepub.EPUB_META_DIR + 'com.apple.ibooks.display-options.xml');
-        this.buffers[dir + Peepub.EPUB_META_DIR + 'com.apple.ibooks.display-options.xml'] = new Buffer(handlebars.templates[templatesBase + "com.apple.ibooks.display-options.xml"]({}));
+        this.buffers[dir + Peepub.EPUB_META_DIR + 'com.apple.ibooks.display-options.xml'] = Buffer.from(handlebars.templates[templatesBase + "com.apple.ibooks.display-options.xml"]({}));
       }
     }
   }
@@ -211,6 +220,7 @@ Peepub.prototype._fetchAssets = function(){
     var fileName = path.basename(src);
     var hrefI = 1;
     while(_.map(allAssets, 'fileName').indexOf(fileName) > -1){
+
       fileName = path.basename(src, path.extname(src)) + '_' + hrefI + path.extname(src);
       hrefI++;
     }
@@ -336,7 +346,7 @@ Peepub.prototype._contentOpf = function(options, callback){
         that._createToc(function(){
           var contentOpf = handlebars.templates[templatesBase + "content.opf"](json);
           if(!that.useFs){
-            that.buffers[that.contentOpfPath()] = new Buffer(contentOpf);
+            that.buffers[that.contentOpfPath()] = Buffer.from(contentOpf);
             that.epubFiles.push(that.contentOpfPath());
             d.resolve(contentOpf);
 
@@ -394,8 +404,8 @@ Peepub.prototype._createToc = function(callback){
 
   var tocHtml = handlebars.templates[templatesBase + "toc.html"](json);
   var tocNcx = handlebars.templates[templatesBase + "toc.ncx"](json);
-  this.buffers[this._epubPath() + Peepub.EPUB_CONTENT_DIR + 'toc.html'] = new Buffer(tocHtml);
-  this.buffers[this._epubPath() + Peepub.EPUB_CONTENT_DIR + 'toc.ncx'] = new Buffer(tocNcx);
+  this.buffers[this._epubPath() + Peepub.EPUB_CONTENT_DIR + 'toc.html'] = Buffer.from(tocHtml);
+  this.buffers[this._epubPath() + Peepub.EPUB_CONTENT_DIR + 'toc.ncx'] = Buffer.from(tocNcx);
 
   if(this.useFs){
     fs.writeFile(this._epubPath() + Peepub.EPUB_CONTENT_DIR + 'toc.html', tocHtml, function(err){
@@ -441,6 +451,12 @@ Peepub.prototype._getPage = function(i){
 
 // will pull it from the internet (or not) and write it
 Peepub.prototype._createFile = function(dest, source){
+
+  if (isWin()) {
+    dest = upath.normalize(dest);
+    source = upath.normalize(source);
+  }
+
   var that = this;
   var d    = Q.defer();
   this.epubFiles.push(dest);
@@ -456,7 +472,8 @@ Peepub.prototype._createFile = function(dest, source){
             ) return true;
         })
     ){
-
+      this.buffers[dest] = Buffer.from(source);
+      d.resolve({ source : source });  
     // nope - it's a string
     if(this.useFs){
       fs.writeFile(dest, source, function(err){
@@ -466,7 +483,7 @@ Peepub.prototype._createFile = function(dest, source){
         return d.resolve({ source : source });
       });
     } else {
-      this.buffers[dest] = new Buffer(source);
+      this.buffers[dest] = Buffer.from(source);
       d.resolve({ source : source });
     }
   }
@@ -474,6 +491,7 @@ Peepub.prototype._createFile = function(dest, source){
 };
 
 Peepub.prototype._createPage = function(i, callback){
+
   var d        = Q.defer();
   var pad      = "00000";
   var name     = 'e' + (pad+i.toString()).slice(-pad.length);
@@ -547,6 +565,7 @@ Peepub.prototype._createPage = function(i, callback){
 };
 
 Peepub.prototype._createPages = function(callback){
+
   if(!this._fetchAssetsCalled) throw "_fetchAssets needs to be called before _createPages";
 
   var that           = this;
@@ -584,7 +603,7 @@ Peepub.prototype._zip = function(callback){
 
   var epubPath = that.fileName ? that._epubDir() + that.fileName  : that._epubDir() + that.id + '.epub';
 
-  var buff = new Buffer('application/epub+zip');
+  var buff = Buffer.from('application/epub+zip');
   zip.file('mimetype', buff.toString('base64'), { base64 : true });
   var filteredData = this.epubFiles;
 
@@ -604,13 +623,14 @@ Peepub.prototype._zip = function(callback){
       }
     }
     if(_.isUndefined(that.buffers[fileObj.path])){
+    
       fs.readFile(fileObj.path, 'binary', function(err, data){
         zip.file(fileObj.name, data, { binary : true });
-
         is_finished();
       });
 
     } else {
+
       zip.file(fileObj.name, that.buffers[fileObj.path].toString('base64'), { base64 : true });
       is_finished();
     }
@@ -618,6 +638,7 @@ Peepub.prototype._zip = function(callback){
 };
 
 Peepub.prototype._zipFs = function(callback){
+
   var d    = Q.defer();
   var that = this;
   var dir  = this._epubPath().slice(0,-1);
@@ -640,7 +661,7 @@ Peepub.prototype._zipFs = function(callback){
 
   archive.pipe(output);
 
-  archive.append(new Buffer("application/epub+zip"), { name : "mimetype", store : true });
+  archive.append(Buffer.from("application/epub+zip"), { name : "mimetype", store : true });
   archive.bulk([
     { expand: true, cwd : that._epubDir() + '/' + that.id, src: ['**'] }
   ]);
